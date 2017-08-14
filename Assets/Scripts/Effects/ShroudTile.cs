@@ -11,17 +11,21 @@ public class ShroudTile : MonoBehaviour {
 		shouldCheck = true;
 	}
 
-	void Update(){
-		if (shouldCheck) {
-			if (!renderer.isVisible) {
-				shouldCheck = false;
-				ReturnToPool();
-			}
-		}
-	}
-		
-	private void ReturnToPool(){
-		DisplayManager.Instance.fieldOfView.shroudTiles.Remove(transform.position);
-		PoolManager.PoolClientDestroy(gameObject);
-	}
+    public void SetShroudStatus(bool enabled){
+        renderer.enabled = enabled;
+    }
+
+//	void Update(){
+//		if (shouldCheck) {
+//			if (!renderer.isVisible) {
+//				shouldCheck = false;
+//				ReturnToPool();
+//			}
+//		}
+//	}
+//		
+//	private void ReturnToPool(){
+//		DisplayManager.Instance.fieldOfView.shroudTiles.Remove(transform.position);
+//		PoolManager.PoolClientDestroy(gameObject);
+//	}
 }
