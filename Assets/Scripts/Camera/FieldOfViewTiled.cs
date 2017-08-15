@@ -22,6 +22,15 @@ public enum CurrentSource
     //etc
 }
 
+public struct RayCastAction{
+	public Vector2 endPos;
+}
+
+public struct ShroudAction{
+	public Vector2 key;
+	public bool enabled;
+}
+
 public class FieldOfViewTiled : ThreadedBehaviour
 {
     public int MonitorRadius = 12;
@@ -33,6 +42,9 @@ public class FieldOfViewTiled : ThreadedBehaviour
     public int WallLayer = 9;
 
     public readonly static Queue<Action> ExecuteOnMainThread = new Queue<Action>();
+
+	private Queue<RayCastAction> rayCastQueue = new Queue<RayCastAction>();
+	private Queue<ShroudAction> shroudStatusQueue = new Queue<ShroudAction>();
     public ManagerState State = ManagerState.Idle;
     public List<Vector2> nearbyShrouds = new List<Vector2>();
     bool updateFov = false;
@@ -57,12 +69,15 @@ public class FieldOfViewTiled : ThreadedBehaviour
     {
         base.StartManager();
         State = ManagerState.Idle;
+		StartCoroutine(FovProcessing());
     }
 
     public override void StopManager()
     {
         base.StopManager();
         State = ManagerState.Idle;
+		StopCoroutine(FovProcessing());
+		Debug.Log("STOP FOV THREAD");
 
     }
 
@@ -77,7 +92,7 @@ public class FieldOfViewTiled : ThreadedBehaviour
                 UpdateSightSourceFov();
                 updateFov = false;
             }
-
+			State = ManagerState.Idle;
 
         }
         catch (Exception e)
@@ -112,6 +127,62 @@ public class FieldOfViewTiled : ThreadedBehaviour
     {
         return PlayerManager.LocalPlayerScript.playerSprites.currentDirection;
     }
+	private static WaitForSeconds _waitForTick;
+	private static WaitForSeconds _waitForHalfTick;
+	private static WaitForSecondsRealtime _waitForSendDelay;
+	private static WaitForEndOfFrame _waitForEndOfFrame;
+	IEnumerator FovProcessing(){
+		_waitForTick = new WaitForSeconds(TickSpeed / 1000f);
+		_waitForHalfTick = new WaitForSeconds(TickSpeed / 2000f);
+		_waitForSendDelay = new WaitForSecondsRealtime(0.2f);
+		_waitForEndOfFrame = new WaitForEndOfFrame();
+
+		while (true) {
+			yield return _waitForTick;
+			while (State != ManagerState.Idle)
+			{
+				yield return _waitForEndOfFrame;
+			}
+			yield return _waitForHalfTick;
+			while (ExecuteOnMainThread.Count > 0)
+			{
+				ExecuteOnMainThread.Dequeue().Invoke();
+			}
+			while (shroudStatusQueue.Count > 0)
+			{
+				SetShroudStatus(shroudStatusQueue.Dequeue());
+			}
+
+			while (rayCastQueue.Count > 0)
+			{
+				RayCastQueue(rayCastQueue.Dequeue().endPos);
+			}
+
+
+
+			yield return _waitForEndOfFrame;
+			nearbyShrouds.Clear();
+			// Update when we move the camera and we have a valid SightSource
+			if (sourceCache == null)
+				continue;
+
+			if (transform.hasChanged && !updateFov)
+			{
+				transform.hasChanged = false;
+
+				if (transform.position == lastPosition && GetSightSourceDirection() == lastDirection)
+					continue;
+
+				nearbyShrouds = GetNearbyShroudTiles();
+				sourcePosCache = GetPlayerSource().transform.position;
+				updateFov = true;
+				lastPosition = transform.position;
+				lastDirection = GetSightSourceDirection();
+			}
+
+		}
+		yield return _waitForHalfTick;
+	}
 
     // Update is called once per frame
     public void Update()
@@ -123,29 +194,7 @@ public class FieldOfViewTiled : ThreadedBehaviour
                 sourceCache = GetPlayerSource();
             }
         }
-        // dispatch stuff on main thread
-        while (ExecuteOnMainThread.Count > 0)
-        {
-            ExecuteOnMainThread.Dequeue().Invoke();
-        }
-
-        // Update when we move the camera and we have a valid SightSource
-        if (sourceCache == null)
-            return;
-
-        if (transform.hasChanged && !updateFov)
-        {
-            transform.hasChanged = false;
-
-            if (transform.position == lastPosition && GetSightSourceDirection() == lastDirection)
-                return;
-
-            nearbyShrouds = GetNearbyShroudTiles();
-            sourcePosCache = GetPlayerSource().transform.position;
-            updateFov = true;
-            lastPosition = transform.position;
-            lastDirection = GetSightSourceDirection();
-        }
+    
     }
 
     public void UpdateSightSourceFov()
@@ -155,21 +204,24 @@ public class FieldOfViewTiled : ThreadedBehaviour
         // Returns all shroud nodes in field of vision
         for (int i = nearbyShroudsArray.Length ; i-- > 1;)
         {
-            ExecuteOnMainThread.Enqueue(() =>
-                {  
-                    SetShroudStatus(nearbyShroudsArray[i], true);
-                });
+			var j = i;
+			var sA = new ShroudAction(){ key = nearbyShroudsArray[j], enabled = true };
+			shroudStatusQueue.Enqueue(sA);
+//            ExecuteOnMainThread.Enqueue(() =>
+//                {  
+//                    SetShroudStatus(nearbyShroudsArray[j], true);
+//                });
             // Light close behind and around
             if (Vector2.Distance(sourcePosCache, nearbyShroudsArray[i]) < InnatePreyVision)
             {
-                inFieldOFVision.Add(nearbyShroudsArray[i]);
+                inFieldOFVision.Add(nearbyShroudsArray[j]);
                 continue;
             }
 
             // In front cone
             if (Vector3.Angle(new Vector3(nearbyShroudsArray[i].x, nearbyShroudsArray[i].y, 0f) - sourcePosCache, GetSightSourceDirection()) < FieldOfVision)
             {
-                inFieldOFVision.Add(nearbyShroudsArray[i]);
+                inFieldOFVision.Add(nearbyShroudsArray[j]);
                 continue;
             }
         }
@@ -180,43 +232,47 @@ public class FieldOfViewTiled : ThreadedBehaviour
         {
             // There is a slight issue with linecast where objects directly diagonal to you are not hit by the cast
             // and since we are standing next to the tile we should always be able to view it, lets always deactive the shroud
+			var j = i;
             if (Vector2.Distance(shroudNodes[i], sourcePosCache) < 2)
             {
-                ExecuteOnMainThread.Enqueue(() =>
-                    {  
-                        SetShroudStatus(shroudNodes[i], false);
-                    });
+				var sA = new ShroudAction(){ key = nearbyShroudsArray[j], enabled = false };
+				shroudStatusQueue.Enqueue(sA);
+//                ExecuteOnMainThread.Enqueue(() =>
+//                    {  
+//                        SetShroudStatus(shroudNodes[j], false);
+//                    });
                 continue;
             }
             // Everything else:
 
             // Perform a linecast to see if a wall is blocking vision of the target tile
-            ExecuteOnMainThread.Enqueue(() =>
-                {
-                    RayCastQueue(shroudNodes[i]);
-                });
+			var rayCast = new RayCastAction(){ endPos = shroudNodes[j]};
+			rayCastQueue.Enqueue(rayCast);
+//            ExecuteOnMainThread.Enqueue(() =>
+//                {
+//                    RayCastQueue(shroudNodes[j]);
+//                });
         }
 
 //        nearbyShrouds.Clear();
     }
 
-    void RayCastQueue(Vector2 endPos)
+	void RayCastQueue(Vector2 endPos)
     {
         RaycastHit2D hit = Physics2D.Linecast(GetPlayerSource().transform.position, endPos, _layerMask);
         // If it hits a wall we should enable the shroud
+//		Debug.DrawLine(GetPlayerSource().transform.position, endPos,Color.red);
         if (hit)
         {
             if (new Vector2(hit.transform.position.x, hit.transform.position.y) != endPos)
             {
                 // Enable shroud, a wall was in the way
                 SetShroudStatus(endPos, true);
-
             }
             else
             {
                 // Disable shroud, the wall was our target tile
                 SetShroudStatus(endPos, false);
-               
             }
         }
         else
@@ -226,13 +282,22 @@ public class FieldOfViewTiled : ThreadedBehaviour
         }
     }
 
+	// Changes a shroud to on or off
+	public void SetShroudStatus(ShroudAction shroudAction)
+	{
+		if (shroudTiles.ContainsKey(shroudAction.key))
+		{
+			shroudTiles[shroudAction.key].SendMessage("SetShroudStatus",shroudAction.enabled,SendMessageOptions.DontRequireReceiver);
+		}
+	}
+
     // Changes a shroud to on or off
     public void SetShroudStatus(Vector2 vector2, bool enabled)
     {
-//        if (shroudTiles.ContainsKey(vector2))
-//        {
-            shroudTiles[vector2].GetComponent<Renderer>().enabled = enabled;
-//        }
+        if (shroudTiles.ContainsKey(vector2))
+        {
+		shroudTiles[vector2].SendMessage("SetShroudStatus",enabled,SendMessageOptions.DontRequireReceiver);
+        }
     }
     // Adds new shroud to our cache and marks it as enabled
     public GameObject RegisterNewShroud(Vector2 vector2, bool active)
