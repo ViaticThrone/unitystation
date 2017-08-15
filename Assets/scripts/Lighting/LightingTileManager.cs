@@ -6,7 +6,7 @@ namespace Lighting
 {
 	public class LightingTileManager : MonoBehaviour
 	{
-		public Dictionary<Vector2,LightTile> lightTiles = new Dictionary<Vector2, LightTile>();
+		public Dictionary<Vector2,LightTile> lightTiles = new Dictionary<Vector2, LightTile>(new Vector2EqualityComparer());
 
 		public Vector4 bounds;
 

@@ -7,7 +7,7 @@ namespace Lighting
 	public class LightingSourceManager: MonoBehaviour
 	{
 
-		public Dictionary<Vector2,LightSource> lights = new Dictionary<Vector2, LightSource>();
+		public Dictionary<Vector2,LightSource> lights = new Dictionary<Vector2, LightSource>(new Vector2EqualityComparer());
 		private LightingRoom lightingRoomParent;
 
 		void Awake()

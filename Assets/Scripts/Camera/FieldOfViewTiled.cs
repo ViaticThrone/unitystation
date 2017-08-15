@@ -36,7 +36,7 @@ public class FieldOfViewTiled : ThreadedBehaviour
     public int MonitorRadius = 12;
     public int FieldOfVision = 90;
     public int InnatePreyVision = 6;
-    public Dictionary<Vector2, GameObject> shroudTiles = new Dictionary<Vector2, GameObject>();
+    public Dictionary<Vector2, GameObject> shroudTiles = new Dictionary<Vector2, GameObject>(new Vector2EqualityComparer());
     private Vector3 lastPosition;
     private Vector2 lastDirection;
     public int WallLayer = 9;
