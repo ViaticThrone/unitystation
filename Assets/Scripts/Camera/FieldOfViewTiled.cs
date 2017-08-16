@@ -98,8 +98,7 @@ public class FieldOfViewTiled : ThreadedBehaviour
 			});
 		}
 	}
-
-
+        
 	// This should return the current GameObject which is providing vision
 	// into the fog of war - such as a security camera or a player
 	public Transform GetPlayerSource()
@@ -170,14 +169,14 @@ public class FieldOfViewTiled : ThreadedBehaviour
 				sourceCache = GetPlayerSource();
 			}
 		}
-    
 	}
 
+    //Worker Thread:
 	public void UpdateSightSourceFov()
 	{
 		List<Vector2> inFieldOFVision = new List<Vector2>();
 		// Returns all shroud nodes in field of vision
-		for (int i = nearbyShrouds.Count; i-- > 1;) {
+		for (int i = nearbyShrouds.Count; i-- > 0;) {
 			var j = i;
 			var sA = new ShroudAction(){ key = nearbyShrouds[j], enabled = true };
 			shroudStatusQueue.Enqueue(sA);
@@ -195,7 +194,7 @@ public class FieldOfViewTiled : ThreadedBehaviour
 		}
 			
 		// Loop through all tiles that are nearby and are in field of vision
-		for (int i = inFieldOFVision.Count; i-- > 1;) {
+		for (int i = inFieldOFVision.Count; i-- > 0;) {
 			// There is a slight issue with linecast where objects directly diagonal to you are not hit by the cast
 			// and since we are standing next to the tile we should always be able to view it, lets always deactive the shroud
 			var j = i;
@@ -208,8 +207,7 @@ public class FieldOfViewTiled : ThreadedBehaviour
 			// Perform a linecast to see if a wall is blocking vision of the target tile
 			var rA = new ShroudAction(){ isRayCastAction = true, endPos = inFieldOFVision[j] };
 			shroudStatusQueue.Enqueue(rA);
-		}
-			
+		}	
 	}
 
 	void RayCastQueue(Vector2 endPos)
@@ -232,17 +230,16 @@ public class FieldOfViewTiled : ThreadedBehaviour
 	}
 
 	// Changes a shroud to on or off
-	public void SetShroudStatus(ShroudAction shroudAction)
+	private void SetShroudStatus(ShroudAction shroudAction)
 	{
 		if (shroudAction.isRayCastAction) {
 			RayCastQueue(shroudAction.endPos);
 		} else if (shroudTiles.ContainsKey(shroudAction.key)) {
 			shroudTiles[shroudAction.key].SendMessage("SetShroudStatus", shroudAction.enabled, SendMessageOptions.DontRequireReceiver);
 		}
-
 	}
 
-	public void SetShroudStatus(Vector2 vector2, bool enabled)
+	private void SetShroudStatus(Vector2 vector2, bool enabled)
 	{
 		if (shroudTiles.ContainsKey(vector2))
 			shroudTiles[vector2].SendMessage("SetShroudStatus", enabled, SendMessageOptions.DontRequireReceiver);
@@ -278,7 +275,6 @@ public class FieldOfViewTiled : ThreadedBehaviour
 				nearbyShroudTiles.Add(new Vector2(x, y));
 			}
 		}
-
 		return nearbyShroudTiles;
 	}
 }
